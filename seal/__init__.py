@@ -17,7 +17,7 @@
 
 import os
 
-logformat = '%(asctime)s\t%(levelname)s\t[ %(name)s ]\t%(message)'
+logformat = '%(asctime)s\t%(levelname)s\t[ %(name)s ]\t%(message)s'
 
 try:
   from seal.version import version as __version__
