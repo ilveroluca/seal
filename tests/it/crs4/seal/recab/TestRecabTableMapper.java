@@ -34,6 +34,7 @@ import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.lib.input.FileSplit;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
+import org.apache.hadoop.mapreduce.TaskAttemptContextImpl;
 import org.apache.hadoop.mapreduce.TaskAttemptID;
 
 import java.io.File;
@@ -130,7 +131,7 @@ public class TestRecabTableMapper
 		FileSplit split = new FileSplit(new Path(tempFile.toURI().toString()), 0, sam.length(), null);
 
 		samReader = new SamInputFormat.SamRecordReader();
-		samReader.initialize(split, new TaskAttemptContext(conf, new TaskAttemptID()));
+		samReader.initialize(split, new TaskAttemptContextImpl(conf, new TaskAttemptID()));
 	}
 
 	private List<ReadPair> makeReadPairs(String sam) throws IOException

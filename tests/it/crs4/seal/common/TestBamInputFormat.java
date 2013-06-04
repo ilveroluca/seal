@@ -46,6 +46,7 @@ import org.apache.hadoop.mapreduce.lib.input.FileSplit;
 import org.apache.hadoop.mapreduce.RecordReader;
 
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
+import org.apache.hadoop.mapreduce.TaskAttemptContextImpl;
 import org.apache.hadoop.mapreduce.TaskAttemptID;
 import org.apache.commons.codec.binary.Base64;
 
@@ -92,7 +93,7 @@ Read/1	117	1	10018	0	*	=	10018	0	TTAGGGCTAGGGCTAGGGCTAGGGCTAGGGTTAGGGTTAGGGCTAGG
 		pair = null;
 
 		format = new BamInputFormat();
-		context = new TaskAttemptContext(conf, new TaskAttemptID());
+		context = new TaskAttemptContextImpl(conf, new TaskAttemptID());
 	}
 
 	@After
