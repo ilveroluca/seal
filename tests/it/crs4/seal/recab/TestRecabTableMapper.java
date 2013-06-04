@@ -34,7 +34,7 @@ import org.apache.hadoop.io.LongWritable;
 import org.apache.hadoop.io.Text;
 import org.apache.hadoop.mapreduce.lib.input.FileSplit;
 import org.apache.hadoop.mapreduce.TaskAttemptContext;
-import org.apache.hadoop.mapreduce.TaskAttemptContextImpl;
+import org.apache.hadoop.mapreduce.TaskAttemptContext.task.Impl;
 import org.apache.hadoop.mapreduce.TaskAttemptID;
 
 import java.io.File;
