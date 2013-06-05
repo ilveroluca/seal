@@ -106,7 +106,7 @@ public class TextSampler implements IndexedSortable {
 		                                    Path partFile) throws IOException, InterruptedException {
 		Configuration conf = job.getConfiguration();
 		TaskAttemptID id = new TaskAttemptID();
-		TaskAttemptContext taskContext = TaskAttemptContextImpl(conf, id);
+		TaskAttemptContext taskContext = new TaskAttemptContextImpl(conf, id);
 
 		TextSampler sampler = new TextSampler();
 		Text key = new Text();
