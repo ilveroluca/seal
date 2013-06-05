@@ -671,13 +671,11 @@ void bwa_refine_gapped_memory(const bntseq_t *bns, ubyte_t *pacseq, int n_seqs, 
       bwt_multi1_t *q = s->multi + j;
       int n_cigar;
       if (q->n_gapo + q->n_gape == 0) continue;
-      q->cigar = bwa_refine_gapped_core(bns->l_pac, pacseq, s->len, q->strand? s->rseq : s->seq, q->ref_shift, &q->pos,
-				    (q->strand? 1 : -1) * (q->n_gapo + q->n_gape), &n_cigar);
+      q->cigar = bwa_refine_gapped_core(bns->l_pac, pacseq, s->len, q->strand? s->rseq : s->seq, q->ref_shift, &q->pos, &n_cigar);
       q->n_cigar = n_cigar;
     }
     if (s->type == BWA_TYPE_NO_MATCH || s->type == BWA_TYPE_MATESW || s->n_gapo == 0) continue;
-    s->cigar = refine_gapped_core(bns->l_pac, pacseq, s->len, s->strand? s->rseq : s->seq, q->ref_shift, &s->pos,
-				  (s->strand? 1 : -1) * (s->n_gapo + s->n_gape), &s->n_cigar);
+    s->cigar = bwa_refine_gapped_core(bns->l_pac, pacseq, s->len, s->strand? s->rseq : s->seq, q->ref_shift, &s->pos, &s->n_cigar);
   }
 
   // generate MD tag
