@@ -66,18 +66,18 @@ void bwt_restore_sa(const char *fn, bwt_t *bwt)
 	bwtint_t primary;
 
 	fp = xopen(fn, "rb");
-	fread(&primary, sizeof(bwtint_t), 1, fp);
+	err_fread_noeof(&primary, sizeof(bwtint_t), 1, fp);
 	xassert(primary == bwt->primary, "SA-BWT inconsistency: primary is not the same.");
-	fread(skipped, sizeof(bwtint_t), 4, fp); // skip
-	fread(&bwt->sa_intv, sizeof(bwtint_t), 1, fp);
-	fread(&primary, sizeof(bwtint_t), 1, fp);
+	err_fread_noeof(skipped, sizeof(bwtint_t), 4, fp); // skip
+	err_fread_noeof(&bwt->sa_intv, sizeof(bwtint_t), 1, fp);
+	err_fread_noeof(&primary, sizeof(bwtint_t), 1, fp);
 	xassert(primary == bwt->seq_len, "SA-BWT inconsistency: seq_len is not the same.");
 
 	bwt->n_sa = (bwt->seq_len + bwt->sa_intv) / bwt->sa_intv;
 	bwt->sa = (bwtint_t*)calloc(bwt->n_sa, sizeof(bwtint_t));
 	bwt->sa[0] = -1;
 
-	fread(bwt->sa + 1, sizeof(bwtint_t), bwt->n_sa - 1, fp);
+	err_fread_noeof(bwt->sa + 1, sizeof(bwtint_t), bwt->n_sa - 1, fp);
 	fclose(fp);
 }
 
@@ -92,9 +92,9 @@ bwt_t *bwt_restore_bwt(const char *fn)
 	bwt->bwt_size = (ftell(fp) - sizeof(bwtint_t) * 5) >> 2;
 	bwt->bwt = (uint32_t*)calloc(bwt->bwt_size, sizeof(uint32_t));
 	fseek(fp, 0, SEEK_SET);
-	fread(&bwt->primary, sizeof(bwtint_t), 1, fp);
-	fread(bwt->L2+1, sizeof(bwtint_t), 4, fp);
-	fread(bwt->bwt, sizeof(uint32_t), bwt->bwt_size, fp);
+	err_fread_noeof(&bwt->primary, sizeof(bwtint_t), 1, fp);
+	err_fread_noeof(bwt->L2+1, sizeof(bwtint_t), 4, fp);
+	err_fread_noeof(bwt->bwt, sizeof(uint32_t), bwt->bwt_size, fp);
 	bwt->seq_len = bwt->L2[4];
 	fclose(fp);
 	bwt_gen_cnt_table(bwt);
