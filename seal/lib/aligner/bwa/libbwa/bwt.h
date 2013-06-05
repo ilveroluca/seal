@@ -29,15 +29,19 @@
 #define BWA_BWT_H
 
 #include <stdint.h>
+#include <stddef.h>
 
-// requirement: (OCC_INTERVAL%16 == 0)
-#define OCC_INTERVAL 0x80
+// requirement: (OCC_INTERVAL%16 == 0); please DO NOT change this line because some part of the code assume OCC_INTERVAL=0x80
+#define OCC_INTV_SHIFT 7
+#define OCC_INTERVAL   (1LL<<OCC_INTV_SHIFT)
+#define OCC_INTV_MASK  (OCC_INTERVAL - 1)
 
 #ifndef BWA_UBYTE
 #define BWA_UBYTE
 typedef unsigned char ubyte_t;
 #endif
-typedef uint32_t bwtint_t;
+
+typedef uint64_t bwtint_t;
 
 typedef struct {
 	bwtint_t primary; // S^{-1}(0), or the primary index of BWT
@@ -53,21 +57,27 @@ typedef struct {
 	bwtint_t *sa;
 } bwt_t;
 
-#define bwt_bwt(b, k) ((b)->bwt[(k)/OCC_INTERVAL*12 + 4 + (k)%OCC_INTERVAL/16])
+typedef struct {
+	bwtint_t x[3], info;
+} bwtintv_t;
+
+typedef struct { size_t n, m; bwtintv_t *a; } bwtintv_v;
+
+/* For general OCC_INTERVAL, the following is correct:
+#define bwt_bwt(b, k) ((b)->bwt[(k)/OCC_INTERVAL * (OCC_INTERVAL/(sizeof(uint32_t)*8/2) + sizeof(bwtint_t)/4*4) + sizeof(bwtint_t)/4*4 + (k)%OCC_INTERVAL/16])
+#define bwt_occ_intv(b, k) ((b)->bwt + (k)/OCC_INTERVAL * (OCC_INTERVAL/(sizeof(uint32_t)*8/2) + sizeof(bwtint_t)/4*4)
+*/
+
+// The following two lines are ONLY correct when OCC_INTERVAL==0x80
+#define bwt_bwt(b, k) ((b)->bwt[((k)>>7<<4) + sizeof(bwtint_t) + (((k)&0x7f)>>4)])
+#define bwt_occ_intv(b, k) ((b)->bwt + ((k)>>7<<4))
 
 /* retrieve a character from the $-removed BWT string. Note that
  * bwt_t::bwt is not exactly the BWT string and therefore this macro is
  * called bwt_B0 instead of bwt_B */
 #define bwt_B0(b, k) (bwt_bwt(b, k)>>((~(k)&0xf)<<1)&3)
 
-#define bwt_occ_intv(b, k) ((b)->bwt + (k)/OCC_INTERVAL*12)
-
-// inverse Psi function
-#define bwt_invPsi(bwt, k)												\
-	(((k) == (bwt)->primary)? 0 :										\
-	 ((k) < (bwt)->primary)?											\
-	 (bwt)->L2[bwt_B0(bwt, k)] + bwt_occ(bwt, k, bwt_B0(bwt, k))		\
-	 : (bwt)->L2[bwt_B0(bwt, (k)-1)] + bwt_occ(bwt, k, bwt_B0(bwt, (k)-1)))
+#define bwt_set_intv(bwt, c, ik) ((ik).x[0] = (bwt)->L2[(int)(c)]+1, (ik).x[2] = (bwt)->L2[(int)(c)+1]-(bwt)->L2[(int)(c)], (ik).x[1] = (bwt)->L2[3-(c)]+1, (ik).info = 0)
 
 #ifdef __cplusplus
 extern "C" {
@@ -97,6 +107,19 @@ extern "C" {
 
 	int bwt_match_exact(const bwt_t *bwt, int len, const ubyte_t *str, bwtint_t *sa_begin, bwtint_t *sa_end);
 	int bwt_match_exact_alt(const bwt_t *bwt, int len, const ubyte_t *str, bwtint_t *k0, bwtint_t *l0);
+
+	/**
+	 * Extend bi-SA-interval _ik_
+	 */
+	void bwt_extend(const bwt_t *bwt, const bwtintv_t *ik, bwtintv_t ok[4], int is_back);
+
+	/**
+	 * Given a query _q_, collect potential SMEMs covering position _x_ and store them in _mem_.
+	 * Return the end of the longest exact match starting from _x_.
+	 */
+	int bwt_smem1(const bwt_t *bwt, int len, const uint8_t *q, int x, int min_intv, bwtintv_v *mem, bwtintv_v *tmpvec[2]);
+
+	// SMEM iterator interface
 
 #ifdef __cplusplus
 }
