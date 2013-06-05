@@ -665,10 +665,11 @@ void bwa_refine_gapped_memory(const bntseq_t *bns, ubyte_t *pacseq, int n_seqs, 
   kstring_t *str;
 
   for (i = 0; i != n_seqs; ++i) {
+    bwt_multi1_t *q;
     bwa_seq_t *s = seqs + i;
     seq_reverse(s->len, s->seq, 0); // IMPORTANT: s->seq is reversed here!!!
     for (j = 0; j < s->n_multi; ++j) {
-      bwt_multi1_t *q = s->multi + j;
+      q = s->multi + j;
       int n_cigar;
       if (q->n_gapo + q->n_gape == 0) continue;
       q->cigar = bwa_refine_gapped_core(bns->l_pac, pacseq, s->len, q->strand? s->rseq : s->seq, q->ref_shift, &q->pos, &n_cigar);
