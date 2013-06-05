@@ -160,7 +160,7 @@ bwt_t *bwt_restore_bwt_mmap(const char *fn)
 	bwt = (bwt_t*)calloc(1, sizeof(bwt_t));
 	bwt->bwt_size = (buf.st_size - sizeof(bwtint_t)*5) >> 2;
 	bwt->primary = ((bwtint_t*)m)[0];
-	bwt->bwt = &((bwtint_t*)m)[5];
+	bwt->bwt = (uint32_t*)&((bwtint_t*)m)[5];
 	size_t i;
 	for(i = 1; i < 5; ++i) {
 	  bwt->L2[i] = ((bwtint_t*)m)[i];
