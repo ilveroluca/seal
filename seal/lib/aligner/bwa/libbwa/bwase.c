@@ -665,7 +665,7 @@ void bwa_refine_gapped_memory(const bntseq_t *bns, ubyte_t *pacseq, int n_seqs, 
   kstring_t *str;
 
   for (i = 0; i != n_seqs; ++i) {
-    bwt_multi1_t *q;
+    bwt_multi1_t *q = NULL;
     bwa_seq_t *s = seqs + i;
     seq_reverse(s->len, s->seq, 0); // IMPORTANT: s->seq is reversed here!!!
     for (j = 0; j < s->n_multi; ++j) {
