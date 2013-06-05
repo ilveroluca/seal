@@ -43,7 +43,7 @@ void bwt_dump_bwt(const char *fn, const bwt_t *bwt)
 	fp = xopen(fn, "wb");
 	fwrite(&bwt->primary, sizeof(bwtint_t), 1, fp);
 	fwrite(bwt->L2+1, sizeof(bwtint_t), 4, fp);
-	fwrite(bwt->bwt, sizeof(bwtint_t), bwt->bwt_size, fp);
+	fwrite(bwt->bwt, sizeof(uint32_t), bwt->bwt_size, fp);
 	fclose(fp);
 }
 
@@ -90,11 +90,11 @@ bwt_t *bwt_restore_bwt(const char *fn)
 	fp = xopen(fn, "rb");
 	fseek(fp, 0, SEEK_END);
 	bwt->bwt_size = (ftell(fp) - sizeof(bwtint_t) * 5) >> 2;
-	bwt->bwt = (uint32_t*)calloc(bwt->bwt_size, 4);
+	bwt->bwt = (uint32_t*)calloc(bwt->bwt_size, sizeof(uint32_t));
 	fseek(fp, 0, SEEK_SET);
 	fread(&bwt->primary, sizeof(bwtint_t), 1, fp);
 	fread(bwt->L2+1, sizeof(bwtint_t), 4, fp);
-	fread(bwt->bwt, 4, bwt->bwt_size, fp);
+	fread(bwt->bwt, sizeof(uint32_t), bwt->bwt_size, fp);
 	bwt->seq_len = bwt->L2[4];
 	fclose(fp);
 	bwt_gen_cnt_table(bwt);
