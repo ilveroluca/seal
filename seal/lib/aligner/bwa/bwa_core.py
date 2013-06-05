@@ -55,27 +55,28 @@ def get_cigar_pos_end(cigar, pos):
 
 #-STRUCT-WRAPPERS--------------------------------------------------------------
 class gap_opt_t(ct.Structure):
-  _fields_ = [("s_mm", ct.c_int32),
-              ("s_gapo", ct.c_int32),
-              ("s_gape", ct.c_int32),
-              ("mode", ct.c_int32),
-              ("indel_end_skip", ct.c_int32),
-              ("max_del_occ", ct.c_int32),
-              ("max_entries", ct.c_int32),
+  _fields_ = [("s_mm", ct.c_int),
+              ("s_gapo", ct.c_int),
+              ("s_gape", ct.c_int),
+              ("mode", ct.c_int),
+              ("indel_end_skip", ct.c_int),
+              ("max_del_occ", ct.c_int),
+              ("max_entries", ct.c_int),
               ("fnr", ct.c_float),
-              ("max_diff", ct.c_int32),
-              ("max_gapo", ct.c_int32),
-              ("max_gape", ct.c_int32),
-              ("max_seed_diff", ct.c_int32),
-              ("seed_len", ct.c_int32),
-              ("n_threads", ct.c_int32),
-              ("max_top2", ct.c_int32),
-              ("trim_qual", ct.c_int32),
+              ("max_diff", ct.c_int),
+              ("max_gapo", ct.c_int),
+              ("max_gape", ct.c_int),
+              ("max_seed_diff", ct.c_int),
+              ("seed_len", ct.c_int),
+              ("n_threads", ct.c_int),
+              ("max_top2", ct.c_int),
+              ("trim_qual", ct.c_int),
               ]
 
 
 class pe_opt_t(ct.Structure):
   _fields_ = [("max_isize", ct.c_int),
+              ("force_isize", ct.c_int),
               ("max_occ", ct.c_int),
               ("n_multi", ct.c_int),
               ("N_multi", ct.c_int),
@@ -86,15 +87,15 @@ class pe_opt_t(ct.Structure):
 
 
 class bwt_t(ct.Structure):
-  _fields_ = [("primary", ct.c_uint32), #S^{-1}(0), or the primary index of BWT
-              ("L2", ct.c_uint32 * 5), #C(), cumulative count
-              ("seq_len", ct.c_uint32), # sequence length
-              ("bwt_size", ct.c_uint32), # size of bwt, about seq_len/4
+  _fields_ = [("primary", ct.c_uint64), #S^{-1}(0), or the primary index of BWT
+              ("L2", ct.c_uint64 * 5), #C(), cumulative count
+              ("seq_len", ct.c_uint64), # sequence length
+              ("bwt_size", ct.c_uint64), # size of bwt, about seq_len/4
               ("bwt", ct.POINTER(ct.c_uint32)), # BWT
               ("cnt_table", ct.c_uint32 * 256),  # cnt_table[256]
-              ("sa_intv", ct.c_int32),
-              ("n_sa", ct.c_uint32),
-              ("sa", ct.POINTER(ct.c_uint32))]
+              ("sa_intv", ct.c_int),
+              ("n_sa", ct.c_uint64),
+              ("sa", ct.POINTER(ct.c_uint64))]
 
 
 class bntann1_t(ct.Structure):
@@ -122,28 +123,30 @@ class bntseq_t(ct.Structure):
               ("fp_pac", ct.c_void_p)] # this is really a FILE *fp_pac
 
 class bwt_width_t(ct.Structure):
-  _fields_ = [('w', ct.c_uint32),
-              ('bid', ct.c_int32)]
+  _fields_ = [('w', ct.c_uint64),
+              ('bid', ct.c_int)]
 
 
 class bwt_aln1_t(ct.Structure):
-  _fields_ = [('n_mm', ct.c_uint32, 8),
-              ('n_gapo', ct.c_uint32, 8),
-              ('n_gape', ct.c_uint32, 8),
-              ('a', ct.c_uint32, 1),
-              ('k', ct.c_uint32),
-              ('l', ct.c_uint32),
-              ('score', ct.c_int32)]
+  _fields_ = [('n_mm', ct.c_uint64, 8),
+              ('n_gapo', ct.c_uint64, 8),
+              ('n_gape', ct.c_uint64, 8),
+              ('score', ct.c_uint64, 20),
+              ('n_ins', ct.c_uint64, 10),
+              ('n_del', ct.c_uint64, 10),
+              ('k', ct.c_uint64),
+              ('l', ct.c_uint64)]
 
 # CRS4 patch: 'gap' split into 'n_gapo' + 'n_gape'; added score; 'mm' => 'n_mm'
 class bwt_multi1_t(ct.Structure):
-  _fields_ = [('pos', ct.c_uint32),
-              ('n_cigar', ct.c_uint32, 15),
-              ('n_gapo', ct.c_uint32, 8),
-              ('n_gape', ct.c_uint32, 8),
-              ('n_mm', ct.c_uint32, 8),
-              ('strand', ct.c_uint32, 1),
-              ('score', ct.c_int32),
+  _fields_ = [('n_cigar', ct.c_uint64, 15),
+              ('n_gapo', ct.c_uint64, 8),
+              ('n_gape', ct.c_uint64, 8),
+              ('n_mm', ct.c_uint64, 8),
+              ('strand', ct.c_uint64, 1),
+              ('score', ct.c_int),
+              ('ref_shift', ct.c_int),
+              ('pos', ct.c_uint64),
               ('cigar', ct.POINTER(ct.c_uint16))]
 
   def __init__(self):
@@ -174,21 +177,22 @@ class bwa_seq_t(ct.Structure):
               ('n_gapo', ct.c_uint32, 8),
               ('n_gape', ct.c_uint32, 8),
               ('mapQ', ct.c_uint32, 8),
-              ('score', ct.c_int32),
-              ('clip_len', ct.c_int32),
-              ('n_aln', ct.c_int32),
+              ('score', ct.c_int),
+              ('clip_len', ct.c_int),
+              ('n_aln', ct.c_int),
               ('aln', ct.POINTER(bwt_aln1_t)),
-              ('n_multi', ct.c_int32),
+              ('n_multi', ct.c_int),
               ('multi', ct.POINTER(bwt_multi1_t)),
-              ('sa', ct.c_uint32),
-              ('pos', ct.c_uint32),
+              ('sa', ct.c_uint64),
+              ('pos', ct.c_uint64),
               ('c1', ct.c_uint64, 28),
               ('c2', ct.c_uint64, 28),
               ('seQ', ct.c_uint64, 8),
-              ('n_cigar', ct.c_int32),
+              ('ref_shift', ct.c_int),
+              ('n_cigar', ct.c_int),
               ('cigar', ct.POINTER(ct.c_uint16)),
-              ('tid', ct.c_int32),
-							('bc', ct.c_char * 16), # in-struct array, up to 15 bases, null-terminated
+              ('tid', ct.c_int),
+              ('bc', ct.c_char * (63+1)), # in-struct array, up to BWA_MAX_BCLEN (63) bases, null-terminated
               ('full_len', ct.c_uint32, 20),
               ('nm', ct.c_uint32, 12),
               ('md', ct.c_char_p)]
@@ -306,9 +310,9 @@ class isize_info_t(ct.Structure):
   _fields_ = [('avg', ct.c_double),
               ('std', ct.c_double),
               ('ap_prior', ct.c_double),
-              ('low', ct.c_uint32),
-              ('high', ct.c_uint32),
-              ('high_bayesian', ct.c_uint32)]
+              ('low', ct.c_uint64),
+              ('high', ct.c_uint64),
+              ('high_bayesian', ct.c_uint64)]
 
 
 #-END-STRUCT-WRAPPERS----------------------------------------------------------
