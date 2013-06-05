@@ -20,7 +20,7 @@ AOBJS=		QSufSort.o bwt_gen.o bwase.o bwaseqio.o bwtgap.o bwtaln.o bamlite.o \
 			is.o bwtindex.o bwape.o kopen.o pemerge.o \
 			bwtsw2_core.o bwtsw2_main.o bwtsw2_aux.o bwt_lite.o \
 			bwtsw2_chain.o fastmap.o bwtsw2_pair.o
-OBJS_LIB=	bwtaln.ol bwtgap.ol bwt.ol bwape.ol bwase.ol stdaln.ol \
+OBJS_LIB=	bwtaln.ol bwtgap.ol bwt.ol bwape.ol bwase.ol \
 			bwtio.ol bwaseqio.ol bntseq.ol cs2nt.ol kstring.ol \
 			utils.ol bamlite.ol bwamisc.ol
 PROG=		bwa
