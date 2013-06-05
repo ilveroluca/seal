@@ -869,92 +869,6 @@ void init_g_hash() {
   } while (0)
 
 
-static int pairing_memory(bwa_seq_t *p[2], arr_t *arr, const pe_opt_t *opt, int s_mm, const isize_info_t *ii)
-{
-  int i, j, o_n, subo_n, cnt_chg = 0, low_bound = ii->low, max_len;
-  uint64_t last_pos[2][2], o_pos[2], subo_score, o_score;
-  max_len = p[0]->full_len;
-  if (max_len < p[1]->full_len) max_len = p[1]->full_len;
-  if (low_bound < max_len) low_bound = max_len;
-
-
-  // here v>=u. When ii is set, we check insert size with ii; otherwise with opt->max_isize
-
-  o_score = subo_score = (uint64_t)-1;
-  o_n = subo_n = 0;
-  ks_introsort(uint64_t, arr->n, arr->a);
-  for (j = 0; j < 2; ++j) last_pos[j][0] = last_pos[j][1] = (uint64_t)-1;
-  if (opt->type == BWA_PET_STD) {
-    for (i = 0; i < arr->n; ++i) {
-      uint64_t x = arr->a[i];
-      int strand = p[x&1]->aln[(uint32_t)x>>1].a;
-      if (strand == 1) { // reverse strand, then check
-	int y = 1 - (x&1);
-	__pairing_aux_memory(last_pos[y][1], x);
-	__pairing_aux_memory(last_pos[y][0], x);
-      } else { // forward strand, then push
-	last_pos[x&1][0] = last_pos[x&1][1];
-	last_pos[x&1][1] = x;
-      }
-    }
-  } else if (opt->type == BWA_PET_SOLID) {
-    for (i = 0; i < arr->n; ++i) {
-      uint64_t x = arr->a[i];
-      int strand = p[x&1]->aln[(uint32_t)x>>1].a;
-      if ((strand^x)&1) { // push
-	int y = 1 - (x&1);
-	__pairing_aux_memory(last_pos[y][1], x);
-	__pairing_aux_memory(last_pos[y][0], x);
-      } else { // check
-	last_pos[x&1][0] = last_pos[x&1][1];
-	last_pos[x&1][1] = x;
-      }
-    }
-  } else {
-    fprintf(stderr, "[paring] not implemented yet!\n");
-    exit(1);
-  }
-  // set pairing
-  //fprintf(stderr, "[%d, %d, %d, %d]\n", d->arr.n, (int)(o_score>>32), (int)(subo_score>>32), o_n);
-  if (o_score != (uint64_t)-1) {
-    int mapQ_p = 0; // this is the maximum mapping quality when one end is moved
-    //fprintf(stderr, "%d, %d\n", o_n, subo_n);
-    if (o_n == 1) {
-      if (subo_score == (uint64_t)-1) mapQ_p = 29; // no sub-optimal pair
-      else if ((subo_score>>32) - (o_score>>32) > s_mm * 10) mapQ_p = 23; // poor sub-optimal pair
-      else {
-	int n = subo_n > 255? 255 : subo_n;
-	mapQ_p = ((subo_score>>32) - (o_score>>32)) / 2 - g_log_n[n];
-	if (mapQ_p < 0) mapQ_p = 0;
-      }
-    }
-    if (p[0]->pos == o_pos[0]>>32 && p[1]->pos == o_pos[1]>>32) { // both ends not moved
-      if (p[0]->mapQ > 0 && p[1]->mapQ > 0) {
-	int mapQ = p[0]->mapQ + p[1]->mapQ;
-	if (mapQ > 60) mapQ = 60;
-	p[0]->mapQ = p[1]->mapQ = mapQ;
-      } else {
-	if (p[0]->mapQ == 0) p[0]->mapQ = (mapQ_p + 7 < p[1]->mapQ)? mapQ_p + 7 : p[1]->mapQ;
-	if (p[1]->mapQ == 0) p[1]->mapQ = (mapQ_p + 7 < p[0]->mapQ)? mapQ_p + 7 : p[0]->mapQ;
-      }
-    } else if (p[0]->pos == o_pos[0]>>32) { // [1] moved
-      p[1]->seQ = 0; p[1]->mapQ = p[0]->mapQ;
-      if (p[1]->mapQ > mapQ_p) p[1]->mapQ = mapQ_p;
-    } else if (p[1]->pos == o_pos[1]>>32) { // [0] moved
-      p[0]->seQ = 0; p[0]->mapQ = p[1]->mapQ;
-      if (p[0]->mapQ > mapQ_p) p[0]->mapQ = mapQ_p;
-    } else { // both ends moved
-      p[0]->seQ = p[1]->seQ = 0;
-      mapQ_p -= 20;
-      if (mapQ_p < 0) mapQ_p = 0;
-      p[0]->mapQ = p[1]->mapQ = mapQ_p;
-    }
-    __pairing_aux2_memory(p[0], o_pos[0]);
-    __pairing_aux2_memory(p[1], o_pos[1]);
-  }
-  return cnt_chg;
-}
-
 
 /*
   // bwt should have SA pre-loaded 
@@ -964,12 +878,20 @@ static int pairing_memory(bwa_seq_t *p[2], arr_t *arr, const pe_opt_t *opt, int 
   strcpy(str, prefix); strcat(str, ".rsa"); bwt_restore_sa(str, bwt[1]);
   //all the sequences have their aln preloaded.
  */
-int bwa_cal_pac_pos_pe_memory(bwt_t *const bwt[2], int n_seqs, bwa_seq_t *seqs[2], 
+int bwa_cal_pac_pos_pe_memory(const bntseq_t *bns, bwt_t *const bwt, int n_seqs, bwa_seq_t *seqs[2], 
 			      isize_info_t *ii,
 			      const pe_opt_t *opt, const gap_opt_t *gopt, 
 			      const isize_info_t *last_ii) {
   int i, j, cnt_chg = 0;
-  int max_n_aln = -1;
+	int max_n_aln = - 1;
+	pe_data_t *d;
+	aln_buf_t *buf[2];
+
+	d = (pe_data_t*)calloc(1, sizeof(pe_data_t));
+	buf[0] = (aln_buf_t*)calloc(n_seqs, sizeof(aln_buf_t));
+	buf[1] = (aln_buf_t*)calloc(n_seqs, sizeof(aln_buf_t));
+	if (!d || !buf[0] || !buf[1])
+		err_fatal_simple("Failed to allocate");
 
   // SE
   for (i = 0; i != n_seqs; ++i) {
@@ -986,22 +908,25 @@ int bwa_cal_pac_pos_pe_memory(bwt_t *const bwt[2], int n_seqs, bwa_seq_t *seqs[2
       bwa_aln2seq(p[j]->n_aln, p[j]->aln, p[j]);
 
       if (p[j]->type == BWA_TYPE_UNIQUE || p[j]->type == BWA_TYPE_REPEAT) {
-	int max_diff = gopt->fnr > 0.0? bwa_cal_maxdiff(p[j]->len, BWA_AVG_ERR, gopt->fnr) : gopt->max_diff;
-	p[j]->pos = p[j]->strand? bwt_sa(bwt[0], p[j]->sa)
-	  : bwt[1]->seq_len - (bwt_sa(bwt[1], p[j]->sa) + p[j]->len);
-	p[j]->seQ = p[j]->mapQ = bwa_approx_mapQ(p[j], max_diff);
+				int strand;
+				int max_diff = gopt->fnr > 0.0? bwa_cal_maxdiff(p[j]->len, BWA_AVG_ERR, gopt->fnr) : gopt->max_diff;
+				p[j]->seQ = p[j]->mapQ = bwa_approx_mapQ(p[j], max_diff);
+				p[j]->pos = bwa_sa2pos(bns, bwt, p[j]->sa, p[j]->len + p[j]->ref_shift, &strand);
+				p[j]->strand = strand;
       }
     }
   }
 
   // infer isize
-  infer_isize(n_seqs, seqs, ii, opt->ap_prior, bwt[0]->seq_len);
+  infer_isize(n_seqs, seqs, ii, opt->ap_prior, bwt->seq_len/2);
   if (ii->avg < 0.0 && last_ii->avg > 0.0) *ii = *last_ii;
+	if (opt->force_isize) {
+		fprintf(stderr, "[%s] discard insert size estimate as user's request.\n", __func__);
+		ii->low = ii->high = 0; ii->avg = ii->std = -1.0;
+	}
+
 
   // PE
-  arr_t arr;
-  kv_init(arr);
-  kv_resize(uint64_t, arr, max_n_aln);
   for (i = 0; i != n_seqs; ++i) {
     bwa_seq_t *p[2];
     for (j = 0; j < 2; ++j) {
@@ -1010,65 +935,73 @@ int bwa_cal_pac_pos_pe_memory(bwt_t *const bwt[2], int n_seqs, bwa_seq_t *seqs[2
     if ((p[0]->type == BWA_TYPE_UNIQUE || p[0]->type == BWA_TYPE_REPEAT)
 	&& (p[1]->type == BWA_TYPE_UNIQUE || p[1]->type == BWA_TYPE_REPEAT)) {
       // only when both ends mapped
-      uint64_t x;
-      int j, k, n_occ[2];
+      pair64_t x;
+      int j, k;
+			long long n_occ[2];
       for (j = 0; j < 2; ++j) {
-	n_occ[j] = 0;
-	for (k = 0; k < p[j]->n_aln; ++k)
-	  n_occ[j] += p[j]->aln[k].l - p[j]->aln[k].k + 1;
+				n_occ[j] = 0;
+				for (k = 0; k < p[j]->n_aln; ++k)
+					n_occ[j] += d->aln[j].a[k].l - d->aln[j].a[k].k + 1;
       }
       if (n_occ[0] > opt->max_occ || n_occ[1] > opt->max_occ) continue;
-      arr.n = 0;  /*SIMLEO-BUGFIX*/
+			d->arr.n = 0;
       for (j = 0; j < 2; ++j) {
-	for (k = 0; k < p[j]->n_aln; ++k) {
-	  bwt_aln1_t *r = p[j]->aln + k;
-	  bwtint_t l;
-	  if (r->l - r->k + 1 >= MIN_HASH_WIDTH) { // then check hash table
-	    uint64_t key = (uint64_t)r->k<<32 | r->l;
-	    int ret;
-	    khint_t iter = kh_put(b128, g_hash, key, &ret);
-	    if (ret) { // not in the hash table; ret must equal 1 as we never remove elements
-	      poslist_t *z = &kh_val(g_hash, iter);
-	      z->n = r->l - r->k + 1;
-	      z->a = (bwtint_t*)malloc(sizeof(bwtint_t) * z->n);
-	      for (l = r->k; l <= r->l; ++l)
-		z->a[l - r->k] = r->a? bwt_sa(bwt[0], l) 
-		  : bwt[1]->seq_len - (bwt_sa(bwt[1], l) + p[j]->len);
-	    }
-	    for (l = 0; l < kh_val(g_hash, iter).n; ++l) {
-	      x = kh_val(g_hash, iter).a[l];
-	      x = x<<32 | k<<1 | j;
-	      kv_push(uint64_t, arr, x);
-	    }
-	  } else { // then calculate on the fly
-	    for (l = r->k; l <= r->l; ++l) {
-	      x = r->a? bwt_sa(bwt[0], l) : bwt[1]->seq_len - (bwt_sa(bwt[1], l) + p[j]->len);
-	      x = x<<32 | k<<1 | j;
-	      kv_push(uint64_t, arr, x);
-	    }
-	  }
-	}
-      }
-      cnt_chg += pairing_memory(p, &arr, opt, gopt->s_mm, ii);
+				for (k = 0; k < d->aln[j].n; ++k) {
+					bwt_aln1_t *r = d->aln[j].a + k;
+					bwtint_t l;
+					if (0 && r->l - r->k + 1 >= MIN_HASH_WIDTH) { // then check hash table
+						pair64_t key;
+						int ret;
+						key.x = r->k; key.y = r->l;
+						khint_t iter = kh_put(b128, g_hash, key, &ret);
+						if (ret) { // not in the hash table; ret must equal 1 as we never remove elements
+							poslist_t *z = &kh_val(g_hash, iter);
+							z->n = r->l - r->k + 1;
+							z->a = (bwtint_t*)malloc(sizeof(bwtint_t) * z->n);
+							for (l = r->k; l <= r->l; ++l) {
+								int strand;
+								z->a[l - r->k] = bwa_sa2pos(bns, bwt, l, p[j]->len + p[j]->ref_shift, &strand)<<1;
+								z->a[l - r->k] |= strand;
+							}
+						}
+						for (l = 0; l < kh_val(g_hash, iter).n; ++l) {
+							x.x = kh_val(g_hash, iter).a[l]>>1;
+							x.y = k<<2 | (kh_val(g_hash, iter).a[l]&1)<<1 | j;
+							kv_push(pair64_t, d->arr, x);
+						}
+					} else { // then calculate on the fly
+						for (l = r->k; l <= r->l; ++l) {
+							int strand;
+							x.x = bwa_sa2pos(bns, bwt, l, p[j]->len + p[j]->ref_shift, &strand);
+							x.y = k<<2 | strand<<1 | j;
+							kv_push(pair64_t, d->arr, x);
+						}
+					}
+				}
+			}
+      cnt_chg += pairing(p, d, opt, gopt->s_mm, ii);
     }
 
-    if (opt->N_multi || opt->n_multi) {
-      for (j = 0; j < 2; ++j) {
-	if (p[j]->type != BWA_TYPE_NO_MATCH) {
-	  int k;
-	  if (!(p[j]->extra_flag&SAM_FPP) && p[1-j]->type != BWA_TYPE_NO_MATCH) {
-	    bwa_aln2seq_core(p[j]->n_aln, p[j]->aln, p[j], 0, p[j]->c1+p[j]->c2-1 > opt->N_multi? opt->n_multi : opt->N_multi);
-	  } else bwa_aln2seq_core(p[j]->n_aln, p[j]->aln, p[j], 0, opt->n_multi);
-	  for (k = 0; k < p[j]->n_multi; ++k) {
-	    bwt_multi1_t *q = p[j]->multi + k;
-	    q->pos = q->strand? bwt_sa(bwt[0], q->pos) : bwt[1]->seq_len - (bwt_sa(bwt[1], q->pos) + p[j]->len);
-	  }
-	}
-      }
-    }
+		if (opt->N_multi || opt->n_multi) {
+			for (j = 0; j < 2; ++j) {
+				if (p[j]->type != BWA_TYPE_NO_MATCH) {
+					int k, n_multi;
+					if (!(p[j]->extra_flag&SAM_FPP) && p[1-j]->type != BWA_TYPE_NO_MATCH) {
+						bwa_aln2seq_core(d->aln[j].n, d->aln[j].a, p[j], 0, p[j]->c1+p[j]->c2-1 > opt->N_multi? opt->n_multi : opt->N_multi);
+					} else bwa_aln2seq_core(d->aln[j].n, d->aln[j].a, p[j], 0, opt->n_multi);
+					for (k = 0, n_multi = 0; k < p[j]->n_multi; ++k) {
+						int strand;
+						bwt_multi1_t *q = p[j]->multi + k;
+						q->pos = bwa_sa2pos(bns, bwt, q->pos, p[j]->len + q->ref_shift, &strand);
+						q->strand = strand;
+						if (q->pos != p[j]->pos)
+							p[j]->multi[n_multi++] = *q;
+					}
+					p[j]->n_multi = n_multi;
+				}
+			}
+		}
   }
-  // free
-  kv_destroy(arr);
   return cnt_chg;
 }
 #endif
