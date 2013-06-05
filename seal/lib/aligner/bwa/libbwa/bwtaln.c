@@ -35,11 +35,14 @@ by: Simone Leo <simone.leo@crs4.it>, Luca Pireddu
 #include "bwtaln.h"
 #include "bwtgap.h"
 #include "utils.h"
+#include "bwa.h"
 
 #ifdef HAVE_PTHREAD
-#define THREAD_BLOCK_SIZE 1024
 #include <pthread.h>
-static pthread_mutex_t g_seq_lock = PTHREAD_MUTEX_INITIALIZER;
+#endif
+
+#ifdef USE_MALLOC_WRAPPERS
+#  include "malloc_wrap.h"
 #endif
 
 gap_opt_t *gap_init_opt()
@@ -75,22 +78,22 @@ int bwa_cal_maxdiff(int l, double err, double thres)
 }
 
 // width must be filled as zero
-static int bwt_cal_width(const bwt_t *rbwt, int len, const ubyte_t *str, bwt_width_t *width)
+int bwt_cal_width(const bwt_t *bwt, int len, const ubyte_t *str, bwt_width_t *width)
 {
 	bwtint_t k, l, ok, ol;
 	int i, bid;
 	bid = 0;
-	k = 0; l = rbwt->seq_len;
+	k = 0; l = bwt->seq_len;
 	for (i = 0; i < len; ++i) {
 		ubyte_t c = str[i];
 		if (c < 4) {
-			bwt_2occ(rbwt, k - 1, l, c, &ok, &ol);
-			k = rbwt->L2[c] + ok + 1;
-			l = rbwt->L2[c] + ol;
+			bwt_2occ(bwt, k - 1, l, c, &ok, &ol);
+			k = bwt->L2[c] + ok + 1;
+			l = bwt->L2[c] + ol;
 		}
 		if (k > l || c > 3) { // then restart
 			k = 0;
-			l = rbwt->seq_len;
+			l = bwt->seq_len;
 			++bid;
 		}
 		width[i].w = l - k + 1;
@@ -101,12 +104,11 @@ static int bwt_cal_width(const bwt_t *rbwt, int len, const ubyte_t *str, bwt_wid
 	return bid;
 }
 
-void bwa_cal_sa_reg_gap(int tid, bwt_t *const bwt[2], int n_seqs, bwa_seq_t *seqs, const gap_opt_t *opt)
+void bwa_cal_sa_reg_gap(int tid, bwt_t *const bwt, int n_seqs, bwa_seq_t *seqs, const gap_opt_t *opt)
 {
-	int i, max_l = 0, max_len;
+	int i, j, max_l = 0, max_len;
 	gap_stack_t *stack;
-	bwt_width_t *w[2], *seed_w[2];
-	const ubyte_t *seq[2];
+	bwt_width_t *w, *seed_w;
 	gap_opt_t local_opt = *opt;
 
 	// initiate priority stack
@@ -116,59 +118,43 @@ void bwa_cal_sa_reg_gap(int tid, bwt_t *const bwt[2], int n_seqs, bwa_seq_t *seq
 	if (local_opt.max_diff < local_opt.max_gapo) local_opt.max_gapo = local_opt.max_diff;
 	stack = gap_init_stack(local_opt.max_diff, local_opt.max_gapo, local_opt.max_gape, &local_opt);
 
-	seed_w[0] = (bwt_width_t*)calloc(opt->seed_len+1, sizeof(bwt_width_t));
-	seed_w[1] = (bwt_width_t*)calloc(opt->seed_len+1, sizeof(bwt_width_t));
-	w[0] = w[1] = 0;
+	seed_w = (bwt_width_t*)calloc(opt->seed_len+1, sizeof(bwt_width_t));
+	w = 0;
 	for (i = 0; i != n_seqs; ++i) {
 		bwa_seq_t *p = seqs + i;
 #ifdef HAVE_PTHREAD
-		if (opt->n_threads > 1) {
-			pthread_mutex_lock(&g_seq_lock);
-			if (p->tid < 0) { // unassigned
-				int j;
-				for (j = i; j < n_seqs && j < i + THREAD_BLOCK_SIZE; ++j)
-					seqs[j].tid = tid;
-			} else if (p->tid != tid) {
-				pthread_mutex_unlock(&g_seq_lock);
-				continue;
-			}
-			pthread_mutex_unlock(&g_seq_lock);
-		}
+		if (i % opt->n_threads != tid) continue;
 #endif
 		p->sa = 0; p->type = BWA_TYPE_NO_MATCH; p->c1 = p->c2 = 0; p->n_aln = 0; p->aln = 0;
-		seq[0] = p->seq; seq[1] = p->rseq;
 		if (max_l < p->len) {
 			max_l = p->len;
-			w[0] = (bwt_width_t*)realloc(w[0], (max_l + 1) * sizeof(bwt_width_t));
-			w[1] = (bwt_width_t*)realloc(w[1], (max_l + 1) * sizeof(bwt_width_t));
-			memset(w[0], 0, (max_l + 1) * sizeof(bwt_width_t));
-			memset(w[1], 0, (max_l + 1) * sizeof(bwt_width_t));
+			w = (bwt_width_t*)realloc(w, (max_l + 1) * sizeof(bwt_width_t));
+			memset(w, 0, (max_l + 1) * sizeof(bwt_width_t));
 		}
-		bwt_cal_width(bwt[0], p->len, seq[0], w[0]);
-		bwt_cal_width(bwt[1], p->len, seq[1], w[1]);
+		bwt_cal_width(bwt, p->len, p->seq, w);
 		if (opt->fnr > 0.0) local_opt.max_diff = bwa_cal_maxdiff(p->len, BWA_AVG_ERR, opt->fnr);
 		local_opt.seed_len = opt->seed_len < p->len? opt->seed_len : 0x7fffffff;
-		if (p->len > opt->seed_len) {
-			bwt_cal_width(bwt[0], opt->seed_len, seq[0] + (p->len - opt->seed_len), seed_w[0]);
-			bwt_cal_width(bwt[1], opt->seed_len, seq[1] + (p->len - opt->seed_len), seed_w[1]);
-		}
+		if (p->len > opt->seed_len)
+			bwt_cal_width(bwt, opt->seed_len, p->seq + (p->len - opt->seed_len), seed_w);
 		// core function
-		p->aln = bwt_match_gap(bwt, p->len, seq, w, p->len <= opt->seed_len? 0 : seed_w, &local_opt, &p->n_aln, stack);
-		// store the alignment
-#if !BWT_EXPORT_LIBRARY_FUNCTIONS
+		for (j = 0; j < p->len; ++j) // we need to complement
+			p->seq[j] = p->seq[j] > 3? 4 : 3 - p->seq[j];
+		p->aln = bwt_match_gap(bwt, p->len, p->seq, w, p->len <= opt->seed_len? 0 : seed_w, &local_opt, &p->n_aln, stack);
+		//fprintf(stderr, "mm=%lld,ins=%lld,del=%lld,gapo=%lld\n", p->aln->n_mm, p->aln->n_ins, p->aln->n_del, p->aln->n_gapo);
+#ifndef BWT_EXPORT_LIBRARY_FUNCTIONS
+		// clean up the unused data in the record
 		free(p->name); free(p->seq); free(p->rseq); free(p->qual);
 		p->name = 0; p->seq = p->rseq = p->qual = 0;
 #endif
 	}
-	free(seed_w[0]); free(seed_w[1]);
-	free(w[0]); free(w[1]);
+	free(seed_w); free(w);
 	gap_destroy_stack(stack);
 }
 
 #ifdef HAVE_PTHREAD
 typedef struct {
 	int tid;
-	bwt_t *bwt[2];
+	bwt_t *bwt;
 	int n_seqs;
 	bwa_seq_t *seqs;
 	const gap_opt_t *opt;
@@ -202,35 +188,34 @@ void bwa_aln_core(const char *prefix, const char *fn_fa, const gap_opt_t *opt)
 	bwa_seq_t *seqs;
 	bwa_seqio_t *ks;
 	clock_t t;
-	bwt_t *bwt[2];
+	bwt_t *bwt;
 
 	// initialization
 	ks = bwa_open_reads(opt->mode, fn_fa);
 
 	{ // load BWT
 		char *str = (char*)calloc(strlen(prefix) + 10, 1);
-		strcpy(str, prefix); strcat(str, ".bwt");  bwt[0] = bwt_restore_bwt(str);
-		strcpy(str, prefix); strcat(str, ".rbwt"); bwt[1] = bwt_restore_bwt(str);
+		strcpy(str, prefix); strcat(str, ".bwt");  bwt = bwt_restore_bwt(str);
 		free(str);
 	}
 
 	// core loop
-	fwrite(opt, sizeof(gap_opt_t), 1, stdout);
+	err_fwrite(SAI_MAGIC, 1, 4, stdout);
+	err_fwrite(opt, sizeof(gap_opt_t), 1, stdout);
 	while ((seqs = bwa_read_seq(ks, 0x40000, &n_seqs, opt->mode, opt->trim_qual)) != 0) {
 		tot_seqs += n_seqs;
 
 		fprintf(stderr, "[bwa_aln_core] calculate SA coordinate... ");
 		t = clock();
 		bwa_cal_sa_reg_gap_mt(bwt, n_seqs, seqs, opt);
-
 		fprintf(stderr, "%.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
 		fprintf(stderr, "[bwa_aln_core] write to the disk... ");
 		t = clock();
 		for (i = 0; i < n_seqs; ++i) {
 			bwa_seq_t *p = seqs + i;
-			fwrite(&p->n_aln, 4, 1, stdout);
-			if (p->n_aln) fwrite(p->aln, sizeof(bwt_aln1_t), p->n_aln, stdout);
+			err_fwrite(&p->n_aln, 4, 1, stdout);
+			if (p->n_aln) err_fwrite(p->aln, sizeof(bwt_aln1_t), p->n_aln, stdout);
 		}
 		fprintf(stderr, "%.2f sec\n", (float)(clock() - t) / CLOCKS_PER_SEC);
 
@@ -239,7 +224,7 @@ void bwa_aln_core(const char *prefix, const char *fn_fa, const gap_opt_t *opt)
 	}
 
 	// destroy
-	bwt_destroy(bwt[0]); bwt_destroy(bwt[1]);
+	bwt_destroy(bwt);
 	bwa_seq_close(ks);
 }
 
@@ -247,9 +232,10 @@ int bwa_aln(int argc, char *argv[])
 {
 	int c, opte = -1;
 	gap_opt_t *opt;
+	char *prefix;
 
 	opt = gap_init_opt();
-	while ((c = getopt(argc, argv, "n:o:e:i:d:l:k:cLR:m:t:NM:O:E:q:f:b012IB:")) >= 0) {
+	while ((c = getopt(argc, argv, "n:o:e:i:d:l:k:LR:m:t:NM:O:E:q:f:b012IYB:")) >= 0) {
 		switch (c) {
 		case 'n':
 			if (strstr(optarg, ".")) opt->fnr = atof(optarg), opt->max_diff = -1;
@@ -269,7 +255,6 @@ int bwa_aln(int argc, char *argv[])
 		case 'L': opt->mode |= BWA_MODE_LOGGAP; break;
 		case 'R': opt->max_top2 = atoi(optarg); break;
 		case 'q': opt->trim_qual = atoi(optarg); break;
-		case 'c': opt->mode &= ~BWA_MODE_COMPREAD; break;
 		case 'N': opt->mode |= BWA_MODE_NONSTOP; opt->max_top2 = 0x7fffffff; break;
 		case 'f': xreopen(optarg, "wb", stdout); break;
 		case 'b': opt->mode |= BWA_MODE_BAM; break;
@@ -277,6 +262,7 @@ int bwa_aln(int argc, char *argv[])
 		case '1': opt->mode |= BWA_MODE_BAM_READ1; break;
 		case '2': opt->mode |= BWA_MODE_BAM_READ2; break;
 		case 'I': opt->mode |= BWA_MODE_IL13; break;
+		case 'Y': opt->mode |= BWA_MODE_CFY; break;
 		case 'B': opt->mode |= atoi(optarg) << 24; break;
 		default: return 1;
 		}
@@ -306,7 +292,6 @@ int bwa_aln(int argc, char *argv[])
 		fprintf(stderr, "         -q INT    quality threshold for read trimming down to %dbp [%d]\n", BWA_MIN_RDLEN, opt->trim_qual);
         fprintf(stderr, "         -f FILE   file to write output to instead of stdout\n");
 		fprintf(stderr, "         -B INT    length of barcode\n");
-		fprintf(stderr, "         -c        input sequences are in the color space\n");
 		fprintf(stderr, "         -L        log-scaled gap penalty for long deletions\n");
 		fprintf(stderr, "         -N        non-iterative mode: search for all n-difference hits (slooow)\n");
 		fprintf(stderr, "         -I        the input is in the Illumina 1.3+ FASTQ-like format\n");
@@ -314,6 +299,7 @@ int bwa_aln(int argc, char *argv[])
 		fprintf(stderr, "         -0        use single-end reads only (effective with -b)\n");
 		fprintf(stderr, "         -1        use the 1st read in a pair (effective with -b)\n");
 		fprintf(stderr, "         -2        use the 2nd read in a pair (effective with -b)\n");
+		fprintf(stderr, "         -Y        filter Casava-filtered sequences\n");
 		fprintf(stderr, "\n");
 		return 1;
 	}
@@ -325,25 +311,15 @@ int bwa_aln(int argc, char *argv[])
 			k = l;
 		}
 	}
-	bwa_aln_core(argv[optind], argv[optind+1], opt);
-	free(opt);
+	if ((prefix = bwa_idx_infer_prefix(argv[optind])) == 0) {
+		fprintf(stderr, "[%s] fail to locate the index\n", __func__);
+		free(opt);
+		return 1;
+	}
+	bwa_aln_core(prefix, argv[optind+1], opt);
+	free(opt); free(prefix);
 	return 0;
 }
-
-/* rgoya: Temporary clone of aln_path2cigar to accomodate for bwa_cigar_t,
-__cigar_op and __cigar_len while keeping stdaln stand alone */
-bwa_cigar_t *bwa_aln_path2cigar(const path_t *path, int path_len, int *n_cigar)
-{
-	uint32_t *cigar32;
-	bwa_cigar_t *cigar;
-	int i;
-	cigar32 = aln_path2cigar32((path_t*) path, path_len, n_cigar);
-	cigar = (bwa_cigar_t*)cigar32;
-	for (i = 0; i < *n_cigar; ++i)
-                cigar[i] = __cigar_create( (cigar32[i]&0xf), (cigar32[i]>>4) );
-	return cigar;
-}
-
 /**
  * Function for multi-threaded bwa_cal_sa_reg_gap.
  *
@@ -355,7 +331,7 @@ bwa_cigar_t *bwa_aln_path2cigar(const path_t *path, int path_len, int *n_cigar)
  *
  * Author:  Luca Pireddu <pireddu@crs4.it>
  */
-void bwa_cal_sa_reg_gap_mt(bwt_t *const bwt[2], int n_seqs, bwa_seq_t *seqs, const gap_opt_t *opt)
+void bwa_cal_sa_reg_gap_mt(bwt_t *const bwt, int n_seqs, bwa_seq_t *seqs, const gap_opt_t *opt)
 {
 #ifdef HAVE_PTHREAD
 	if (opt->n_threads <= 1) { // no multi-threading at all
