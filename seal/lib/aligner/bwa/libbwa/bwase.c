@@ -523,7 +523,7 @@ void bwa_print_sam1(const bntseq_t *bns, bwa_seq_t *p, const bwa_seq_t *mate, in
 							err_printf("%d%c", __cigar_len(q->cigar[k]), "MIDS"[__cigar_op(q->cigar[k])]);
 					} else err_printf("%dM", p->len);
 #ifdef BWT_EXPORT_LIBRARY_FUNCTIONS
-					err_printf(",%d;", q->gapo + q->n_gape + q->mm);
+					err_printf(",%d;", q->n_gapo + q->n_gape + q->n_mm);
 #else
 					err_printf(",%d;", q->gap + q->mm);
 #endif
@@ -671,13 +671,13 @@ void bwa_refine_gapped_memory(const bntseq_t *bns, ubyte_t *pacseq, int n_seqs, 
       bwt_multi1_t *q = s->multi + j;
       int n_cigar;
       if (q->n_gapo + q->n_gape == 0) continue;
-      q->cigar = refine_gapped_core(bns->l_pac, pacseq, s->len, q->strand? s->rseq : s->seq, &q->pos,
-				    (q->strand? 1 : -1) * (q->n_gapo + q->n_gape), &n_cigar, 1);
+      q->cigar = bwa_refine_gapped_core(bns->l_pac, pacseq, s->len, q->strand? s->rseq : s->seq, q->ref_shift, &q->pos,
+				    (q->strand? 1 : -1) * (q->n_gapo + q->n_gape), &n_cigar);
       q->n_cigar = n_cigar;
     }
     if (s->type == BWA_TYPE_NO_MATCH || s->type == BWA_TYPE_MATESW || s->n_gapo == 0) continue;
-    s->cigar = refine_gapped_core(bns->l_pac, pacseq, s->len, s->strand? s->rseq : s->seq, &s->pos,
-				  (s->strand? 1 : -1) * (s->n_gapo + s->n_gape), &s->n_cigar, 1);
+    s->cigar = refine_gapped_core(bns->l_pac, pacseq, s->len, s->strand? s->rseq : s->seq, q->ref_shift, &s->pos,
+				  (s->strand? 1 : -1) * (s->n_gapo + s->n_gape), &s->n_cigar);
   }
 
   // generate MD tag
