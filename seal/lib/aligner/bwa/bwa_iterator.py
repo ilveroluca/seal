@@ -101,7 +101,7 @@ class BWAIterator(object):
     self.visitor.stop("cal_sa_reg_gap")
 
     self.visitor.start("cal_pac_pos_pe")
-    bwa.cal_pac_pos_pe(self.__bwts, seq_pairs_read, bwsa, ii,
+    bwa.cal_pac_pos_pe(self.__bnsp, self.__bwts, seq_pairs_read, bwsa, ii,
                                  self.popt, self.gopt, self.__last_ii)
     self.visitor.stop("cal_pac_pos_pe")
     self.__last_ii = ii
