@@ -14,12 +14,21 @@ on them as well. Platforms other than Linux are currently not supported.
 Downloading
 +++++++++++++++++
 
-We recommend you download the latest release from here:  http://sourceforge.net/projects/biodoop-seal/files/.
+You can find the latest release from here:
 
-On the other hand, if you want to try the latest improvements or contributed, you can checkout the latest code
-from our repository::
+http://sourceforge.net/projects/biodoop-seal/files/
 
-  bzr checkout bzr://biodoop-seal.bzr.sourceforge.net/bzrroot/biodoop-seal/trunk seal-trunk
+The documentation refers to this version.
+
+However, the latest release is somewhat old and is missing numerous important
+new features.  If you want to try the latest improvements and contributions, you
+can checkout the latest stable code from our repository::
+
+  git clone https://github.com/crs4/seal.git
+
+We try to keep the crs4/master branch stable.  Note however that the
+documetation for the development version is not up to date.
+
 
 
 Detailed Installation Instructions
